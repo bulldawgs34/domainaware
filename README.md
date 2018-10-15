@@ -84,4 +84,15 @@ code, with a similar concept. The main differences are:
 
 ## Additions From Fork
  
- Added slack API integration
+Added slack API notification integration.
+Within the settings.cfg file there are 3 new variables:
+ - slack_url = the webhook URL within the incoming webhooks feature section for a slackbot
+ - slack_channel = the slack channel, most easily accessed by going to the slack channel url, and copying the value in the address bar after /messages/
+ - slack_authorization_bearer = value starting with xoxb... under the OAuth & Permissions section within the slack API page
+ 
+ There are 3 different types of messages sent to the slack channel:
+ - No newly registered domains. (user should do nothing)
+ - Newly registered domain (user needs to investigate, then move the domains from last_domains to knowndomains.csv on the server in order for the script to run the following day
+ - Previous day's newly registered domain(s) have not been moved from last_domains to knowndomains.csv. Script does not run. This is to prevent new domains from being overlooked.
+ 
+ It is recommended to run ./domainaware --slack once a day as a cronjob to get notifications.
