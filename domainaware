@@ -17,11 +17,11 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
 from email.utils import COMMASPACE
-
 from requests import get
+import subprocess
 
-__author__ = 'Sean Whalen'
-__version__ = '1.2.0'
+__author__ = 'bulldawgs34'
+__version__ = '1.3.0'
 
 
 def dt_whois(domain, **kwargs):
@@ -103,7 +103,7 @@ def crazy_twist(crazy_row):
 def twist_query(dnstwist_path, domain):
     """Query dnstwist"""
     rows = []
-    dt_args = [dnstwist_path, '-grc', domain]
+    dt_args = [dnstwist_path, '-gr', domain] #edited out csv specification, modified dnstwist script to default to csv output
     output = check_output(dt_args, universal_newlines=True, stderr=PIPE)
     dnstwist_csv = DictReader(StringIO(str(output)))
     try:
@@ -131,15 +131,16 @@ def crazy_query(urlcrazy_path, domain, attempt=1):
     max_attempts = 4
     rows = []
     dt_args = [urlcrazy_path, '-f', 'csv', domain]
+
     try:
-        output = check_output(dt_args, universal_newlines=True, stderr=PIPE)
-        output = str(output)
+        output = check_output(dt_args, stderr=PIPE)
+        output = str(output, encoding="utf-8", errors="ignore")
         output = output.replace('\0', '')
         # URLCrazy frequently returns bad output, so keep trying :\
-    except (UnicodeDecodeError, ProcessLookupError, ChildProcessError):
+    except (UnicodeDecodeError, ProcessLookupError, ChildProcessError) as e:
         attempt += 1
         if attempt > max_attempts:
-            print("Warning: Failed to parse URLCrazy output for {}".format(domain), file=stderr)
+            print("Warning: Failed to parse URLCrazy output for {}".format(domain, e), file=stderr)
             return []
         return crazy_query(urlcrazy_path, domain, attempt)
     except CalledProcessError:
@@ -273,6 +274,24 @@ def mail_report(output_file_path, **kwargs):
         kwargs["body"] = kwargs["new_results_body"]
         send_mail(**kwargs)
 
+def send_slack(slack_config):
+    if (file_len("results.csv") > 1):
+#        subprocess.call("/work/typosquatting/domainaware/slackNotify.sh", shell=True)
+        subprocess.call("curl -X POST -H \'Content-type: application/json\' --data \'{\"text\":\"Malicious domains spotted. Investigate!\"}'" + slack_config['slack_url'], shell=True)
+        subprocess.call("curl -F file=@results.csv -F \" initial_comment=Malicious domains spotted. Investigate! Results\" -F channels=" + slack_config['slack_channel'] + " -H \"Authorization: Bearer " + slack_config['slack_authorization_bearer'] + " https://slack.com/api/files.upload", shell=True)
+    else:
+#        subprocess.call("/work/typosquatting/domainaware/noUpdate.sh", shell=True)
+        subprocess.call("curl -X POST -H \'Content-type: application/json\' --data \'{\"text\":\"No new results today\"}' " + slack_config['slack_url'], shell=True)
+
+def notify_to_update():
+#    subprocess.call("/work/typosquatting/domainaware/notifyToUpdate.sh", shell=True)
+    subprocess.call("curl -X POST -H \'Content-type: application/json\' --data \'{\"text\":\"The service tried to run but exited. Please move last_domains entries to knowndomains.csv\"}' " + slack_config['slack_url'], shell=True)
+
+def file_len(fname):
+    with open(fname) as f:
+        for i, l in enumerate(f):
+            pass
+    return i + 1
 
 def main():
     """Called when the module is executed rather than imported"""
@@ -285,6 +304,9 @@ def main():
     parser.add_argument('-o', '--output', help='Path to output to; defaults to results.csv', default='results.csv',
                         required=False)
     parser.add_argument('-m', '--email', help='Email results upon completion; defaults to False', action="store_true",
+                        default=False, required=False)
+
+    parser.add_argument('-s', '--slack', help='Send message on slack to notify; defaults to False', action="store_true",
                         default=False, required=False)
 
     args = parser.parse_args()
@@ -309,6 +331,8 @@ def main():
     email_config = dict(config.items("email"))
     email_config["results_file"] = output_path
     dt_config = dict(config.items("domaintools"))
+    slack_config = dict(config.items("slack"))
+
 
     last_domains_path = path.join(args.config, "last_domains")
     stale = False
@@ -325,6 +349,8 @@ def main():
                     stale = True
                     break
     if stale:
+        notify_to_update()
+
         if args.email:
             email_config["body"] = email_config["stale_body"]
             send_mail(**email_config)
@@ -337,6 +363,8 @@ def main():
 
     if args.email:
         mail_report(args.output, **email_config)
+    if args.slack:
+        send_slack(slack_config)
 
 if __name__ == "__main__":
     main()
