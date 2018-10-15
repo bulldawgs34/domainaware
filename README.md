@@ -81,3 +81,6 @@ code, with a similar concept. The main differences are:
 - NS, MX, A, and AAAA DNS records, and country and fuzzer information are included in the results
 - Domain information is stored in memory rather than temporary files
 - Integration with the DomainTools WHOIS APIs
+
+## Additions From Fork
+-added slack integration
