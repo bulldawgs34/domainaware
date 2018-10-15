@@ -83,4 +83,4 @@ code, with a similar concept. The main differences are:
 - Integration with the DomainTools WHOIS APIs
 
 ## Additions From Fork
--added slack integration
+ -Added slack API integration
