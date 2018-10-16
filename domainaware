@@ -103,7 +103,7 @@ def crazy_twist(crazy_row):
 def twist_query(dnstwist_path, domain):
     """Query dnstwist"""
     rows = []
-    dt_args = [dnstwist_path, '-gr', domain] #edited out csv specification, modified dnstwist script to default to csv output
+    dt_args = [dnstwist_path, '-gr', '-f', 'csv', domain] #edited out csv specification, modified dnstwist script to default to csv output
     output = check_output(dt_args, universal_newlines=True, stderr=PIPE)
     dnstwist_csv = DictReader(StringIO(str(output)))
     try:
@@ -275,17 +275,20 @@ def mail_report(output_file_path, **kwargs):
         send_mail(**kwargs)
 
 def send_slack(slack_config):
+    import pdb; pdb.set_trace()
+
     if (file_len("results.csv") > 1):
 #        subprocess.call("/work/typosquatting/domainaware/slackNotify.sh", shell=True)
-        subprocess.call("curl -X POST -H \'Content-type: application/json\' --data \'{\"text\":\"Malicious domains spotted. Investigate!\"}'" + slack_config['slack_url'], shell=True)
-        subprocess.call("curl -F file=@results.csv -F \" initial_comment=Malicious domains spotted. Investigate! Results\" -F channels=" + slack_config['slack_channel'] + " -H \"Authorization: Bearer " + slack_config['slack_authorization_bearer'] + " https://slack.com/api/files.upload", shell=True)
+        subprocess.call("curl -X POST -H \'Content-type: application/json\' --data \'{\"text\":\"Malicious domains spotted. Investigate!\"}' " + slack_config['slack_url'], shell=True)
+        subprocess.call("curl -F file=@results.csv -F \" initial_comment=Malicious domains spotted. Investigate! Results\" -F channels=" + slack_config['slack_channel'] + " -H \"Authorization: Bearer " + slack_config['slack_authorization_bearer'] + "\"" + " https://slack.com/api/files.upload", shell=True)
     else:
 #        subprocess.call("/work/typosquatting/domainaware/noUpdate.sh", shell=True)
         subprocess.call("curl -X POST -H \'Content-type: application/json\' --data \'{\"text\":\"No new results today\"}' " + slack_config['slack_url'], shell=True)
 
-def notify_to_update():
+def notify_to_update(slack_config):
 #    subprocess.call("/work/typosquatting/domainaware/notifyToUpdate.sh", shell=True)
     subprocess.call("curl -X POST -H \'Content-type: application/json\' --data \'{\"text\":\"The service tried to run but exited. Please move last_domains entries to knowndomains.csv\"}' " + slack_config['slack_url'], shell=True)
+    exit(2)
 
 def file_len(fname):
     with open(fname) as f:
@@ -349,7 +352,7 @@ def main():
                     stale = True
                     break
     if stale:
-        notify_to_update()
+        notify_to_update(slack_config)
 
         if args.email:
             email_config["body"] = email_config["stale_body"]
