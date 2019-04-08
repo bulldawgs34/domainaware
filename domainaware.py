@@ -7,7 +7,7 @@ phishing domains have been registered"""
 from time import sleep
 from configparser import ConfigParser
 from argparse import ArgumentParser
-from os import path, getcwd
+from os import path, getcwd, remove
 from subprocess import check_output, PIPE, CalledProcessError
 from sys import stderr
 from io import StringIO
@@ -19,6 +19,8 @@ from email.mime.text import MIMEText
 from email.utils import COMMASPACE
 from requests import get
 import subprocess
+import requests
+import os
 
 __author__ = 'bulldawgs34'
 __version__ = '1.3.0'
@@ -275,19 +277,35 @@ def mail_report(output_file_path, **kwargs):
         send_mail(**kwargs)
 
 def send_slack(slack_config):
-    #import pdb; pdb.set_trace()
-
     if (file_len("results.csv") > 1):
-#        subprocess.call("/work/typosquatting/domainaware/slackNotify.sh", shell=True)
-        subprocess.call("curl -X POST -H \'Content-type: application/json\' --data \'{\"text\":\"Malicious domains spotted. Investigate!\"}' " + slack_config['slack_url'], shell=True)
-        subprocess.call("curl -F file=@results.csv -F \" initial_comment=Malicious domains spotted. Investigate! Results\" -F channels=" + slack_config['slack_channel'] + " -H \"Authorization: Bearer " + slack_config['slack_authorization_bearer'] + "\"" + " https://slack.com/api/files.upload", shell=True)
+        headers = {
+            'Authorization': 'Bearer ' + slack_config['authorization_bearer'],
+        }
+        
+        files = {
+            'file': ('results.csv', open('results.csv', 'rb')),
+            'initial_comment': (None, 'Malicious domains spotted'),
+            'channels': (None, slack_config['channel']),
+        }
+        response = requests.post('https://slack.com/api/files.upload', headers=headers, files=files)
     else:
-#        subprocess.call("/work/typosquatting/domainaware/noUpdate.sh", shell=True)
-        subprocess.call("curl -X POST -H \'Content-type: application/json\' --data \'{\"text\":\"No new results today\"}' " + slack_config['slack_url'], shell=True)
+        headers = {
+            'Content-type': 'application/json',
+        }
+        domain_list = ""
+        domain_file = open("mydomains.csv")
+        for x in domain_file:
+            domain_list = domain_list + x
+
+        data = '{"text":"No new results for the following domains:\n```' + domain_list + '```"}'
+        response = requests.post(slack_config['slack_url'], headers=headers, data=data)
 
 def notify_to_update(slack_config):
-#    subprocess.call("/work/typosquatting/domainaware/notifyToUpdate.sh", shell=True)
-    subprocess.call("curl -X POST -H \'Content-type: application/json\' --data \'{\"text\":\"The service tried to run but exited. Please move last_domains entries to knowndomains.csv\"}' " + slack_config['slack_url'], shell=True)
+    headers = {
+        'Content-type': 'application/json',
+    }
+    data = '{"text":"The service tried to run but failed. Please move `last_domains` to `known_domains.csv`"}'
+    response = requests.post(slack_config['slack_url'], headers=headers, data=data)
     exit(2)
 
 def file_len(fname):
@@ -311,7 +329,9 @@ def main():
 
     parser.add_argument('-s', '--slack', help='Send message on slack to notify; defaults to False', action="store_true",
                         default=False, required=False)
-
+    parser.add_argument('-b', '--bypassfreeze', help='Bypass the service exiting if last_domains is not empty',action="store_true",
+                        default=False, required=False)                        
+    
     args = parser.parse_args()
 
     if not path.isdir(args.config):
@@ -352,13 +372,26 @@ def main():
                     stale = True
                     break
     if stale:
-        notify_to_update(slack_config)
-
-        if args.email:
-            email_config["body"] = email_config["stale_body"]
-            send_mail(**email_config)
-            print("ERROR! Domains from the last run have not been added to knowndomains.csv. Exiting...", file=stderr)
-            exit(2)
+        if args.bypassfreeze:
+            print("update bypassed...")
+            #copy what's in last_domains to knowndomains.csv
+            known_domains_file_path = paths_config['pwd'] + "/knowndomains.csv"
+            last_domains_file_path = paths_config['pwd'] + "/last_domains"
+            with open(known_domains_file_path, 'a') as knowndomains:
+                knowndomains.write("\n")
+                with open(last_domains_file_path, 'r') as lastdomains:
+                    for line in lastdomains:
+                        knowndomains.write(line)
+            os.remove(paths_config['pwd'] + "/last_domains")
+                        
+        else:
+            notify_to_update(slack_config)
+            
+            if args.email:
+                email_config["body"] = email_config["stale_body"]
+                send_mail(**email_config)
+                print("ERROR! Domains from the last run have not been added to knowndomains.csv. Exiting...", file=stderr)
+                exit(2)
 
     results = find_new_domains(paths_config, my_domains_path, known_domains_path, **dt_config)
 
